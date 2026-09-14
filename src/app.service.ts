@@ -2,7 +2,5 @@ import { Injectable } from '@nestjs/common';
 
 @Injectable()
 export class AppService {
-  getHello(): string {
-    return 'Hello World!';
-  }
+  // Placeholder — this service is intentionally empty for now.
 }
