@@ -7,3 +7,4 @@ export * from './order.entity';
 export * from './order-item.entity';
 export * from './coupon-code.entity';
 export * from './review.entity';
+export * from './password-reset-token.entity';

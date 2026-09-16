@@ -43,6 +43,9 @@ export class User {
   @Column({ default: true })
   isActive: boolean; // false = banned
 
+  @Column({ type: 'varchar', nullable: true })
+  refreshTokenHash: string | null;
+
   @OneToOne(() => Cart, (cart) => cart.user)
   cart: Cart;
 

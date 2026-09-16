@@ -3,8 +3,11 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { envValidationSchema } from './config/env.validation';
 import { buildTypeOrmOptions } from './config/typeorm.config';
+import { SecurityModule } from './common/security.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { UsersModule } from './users/users.module';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
@@ -18,6 +21,9 @@ import { AppService } from './app.service';
       inject: [ConfigService],
       useFactory: buildTypeOrmOptions,
     }),
+    SecurityModule,
+    UsersModule,
+    AuthModule,
   ],
   controllers: [AppController],
   providers: [AppService],
