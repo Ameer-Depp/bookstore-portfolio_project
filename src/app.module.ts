@@ -16,6 +16,7 @@ import { CouponsModule } from './coupons/coupons.module';
 import { OrdersModule } from './orders/orders.module';
 import { LibraryModule } from './library/library.module';
 import { ReviewsModule } from './reviews/reviews.module';
+import { MailModule } from './mail/mail.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { ReviewsModule } from './reviews/reviews.module';
     OrdersModule,
     LibraryModule,
     ReviewsModule,
+    MailModule,
   ],
   controllers: [AppController],
   providers: [AppService],

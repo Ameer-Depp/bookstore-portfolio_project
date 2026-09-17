@@ -17,6 +17,7 @@ import { UsersService } from '../users/users.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
+import { MailService } from '../mail/mail.service';
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 
@@ -45,6 +46,7 @@ export class AuthService {
     private readonly usersService: UsersService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly mail: MailService,
     @InjectRepository(PasswordResetToken)
     private readonly resetTokensRepo: Repository<PasswordResetToken>,
   ) {}
@@ -213,9 +215,16 @@ export class AuthService {
     const frontendUrl =
       this.config.get<string>('FRONTEND_URL') ?? 'http://localhost:3000';
     const resetUrl = `${frontendUrl}/reset-password?token=${rawToken}`;
+
     this.logger.log(`Password reset requested for ${user.email}`);
-    this.logger.log(`[DEV ONLY] Reset URL: ${resetUrl}`);
-    this.logger.log(`[DEV ONLY] Raw token: ${rawToken}`);
+    this.logger.log(`[DEV] Reset URL: ${resetUrl}`);
+    try {
+      await this.mail.sendPasswordReset(user, resetUrl);
+    } catch (err) {
+      this.logger.error(
+        `Failed to send reset email: ${(err as Error).message}`,
+      );
+    }
   }
 
   /**

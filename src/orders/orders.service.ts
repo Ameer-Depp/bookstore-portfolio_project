@@ -14,6 +14,7 @@ import { OrderItem } from '../entities/order-item.entity';
 import { User, UserRole } from '../entities/user.entity';
 import { InsufficientBalanceException } from './errors/insufficient-balance.exception';
 import { OrderResponse, toOrderResponse } from './order-response';
+import { MailService } from '../mail/mail.service';
 
 export interface PaginatedOrders {
   data: OrderResponse[];
@@ -30,9 +31,8 @@ export class OrdersService {
   constructor(
     @InjectRepository(Order)
     private readonly ordersRepo: Repository<Order>,
-    // DataSource injected directly — checkout spans carts, cart_items,
-    // orders, order_items, and users. All-or-nothing, per spec Section 9.
     private readonly dataSource: DataSource,
+    private readonly mail: MailService,
   ) {}
 
   /**
@@ -145,7 +145,46 @@ export class OrdersService {
       `Order ${order.id} placed by user ${userId} for ${order.totalAmount}`,
     );
 
-    return this.findOneForCustomer(userId, order.id, UserRole.CUSTOMER);
+    const fullOrder = await this.findOneForCustomer(
+      userId,
+      order.id,
+      UserRole.CUSTOMER,
+    );
+
+    // Best-effort confirmation email AFTER commit. Never blocks or fails
+    // checkout — see spec Section 6.
+    await this.sendConfirmationEmailQuietly(userId, fullOrder);
+
+    return fullOrder;
+  }
+
+  private async sendConfirmationEmailQuietly(
+    userId: string,
+    order: OrderResponse,
+  ): Promise<void> {
+    try {
+      const user = await this.dataSource
+        .getRepository(User)
+        .findOne({ where: { id: userId } });
+      if (!user) return;
+
+      // Build a minimal Order-shaped object for the mailer. The mailer
+      // only reads `id`, `totalAmount`, and items[].book.title / .unitPrice.
+      const mailOrder = {
+        id: order.id,
+        totalAmount: order.totalAmount,
+        items: order.items.map((i) => ({
+          book: { title: i.book.title },
+          unitPrice: i.unitPrice,
+        })),
+      } as unknown as Order;
+
+      await this.mail.sendOrderConfirmation(user, mailOrder);
+    } catch (err) {
+      this.logger.error(
+        `Failed to send order confirmation: ${(err as Error).message}`,
+      );
+    }
   }
 
   /**

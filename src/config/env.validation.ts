@@ -33,4 +33,6 @@ export const envValidationSchema = Joi.object({
   MAIL_USER: Joi.string().allow('').optional(),
   MAIL_PASSWORD: Joi.string().allow('').optional(),
   MAIL_FROM: Joi.string().allow('').optional(),
+
+  FRONTEND_URL: Joi.string().allow('').optional(),
 });
