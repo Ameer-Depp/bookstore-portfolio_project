@@ -2,9 +2,12 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Patch,
+  Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -17,6 +20,7 @@ import { User, UserRole } from '../entities/user.entity';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 import { ListUsersQueryDto } from './dto/list-users-query.dto';
+import { TopUpDto } from './dto/top-up.dto';
 
 interface PublicUser {
   id: string;
@@ -119,5 +123,17 @@ export class UsersController {
     }
     const fresh = await this.usersService.findByIdOrFail(id);
     return toPublic(fresh);
+  }
+
+  @Post(':id/balance/top-up')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  async topUp(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: TopUpDto,
+  ): Promise<PublicUser> {
+    const user = await this.usersService.topUp(id, dto.amount);
+    return toPublic(user);
   }
 }

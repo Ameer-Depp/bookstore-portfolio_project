@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -61,5 +62,28 @@ export class UsersService {
       total,
       totalPages: Math.ceil(total / limit),
     };
+  }
+
+  /**
+   * Direct admin balance credit. No code, no coupon — this is the
+   * spec's "admin issuing a direct top-up" (Section 1).
+   *
+   * Parameterized raw SQL for the same reason as coupon redemption:
+   * decimal arithmetic must happen in the database, not in JS strings.
+   */
+  async topUp(userId: string, amount: number): Promise<User> {
+    const user = await this.findByIdOrFail(userId);
+
+    // Ensure the amount is expressed as a two-decimal string. Passing a
+    // JS number to the query risks locale/precision surprises; a string
+    // is what Postgres's numeric type expects.
+    const amountStr = amount.toFixed(2);
+
+    await this.usersRepo.query(
+      'UPDATE users SET balance = balance + $1::numeric WHERE id = $2',
+      [amountStr, userId],
+    );
+
+    return this.findByIdOrFail(userId);
   }
 }
