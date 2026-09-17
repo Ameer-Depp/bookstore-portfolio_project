@@ -11,6 +11,7 @@ import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { CategoriesModule } from './categories/categories.module';
 import { BooksModule } from './books/books.module';
+import { CartModule } from './cart/cart.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { BooksModule } from './books/books.module';
     AuthModule,
     CategoriesModule,
     BooksModule,
+    CartModule,
   ],
   controllers: [AppController],
   providers: [AppService],
