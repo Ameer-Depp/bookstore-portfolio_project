@@ -18,6 +18,8 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
 import { MailService } from '../mail/mail.service';
+import { OAuth2Client } from 'google-auth-library';
+import { GoogleLoginDto } from './dto/google-login.dto';
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 
@@ -41,6 +43,8 @@ export interface AuthResponse {
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
+  private readonly googleClient: OAuth2Client;
+  private readonly googleClientId: string | null;
 
   constructor(
     private readonly usersService: UsersService,
@@ -49,7 +53,11 @@ export class AuthService {
     private readonly mail: MailService,
     @InjectRepository(PasswordResetToken)
     private readonly resetTokensRepo: Repository<PasswordResetToken>,
-  ) {}
+  ) {
+    const clientId = this.config.get<string>('GOOGLE_CLIENT_ID');
+    this.googleClientId = clientId && clientId.length > 0 ? clientId : null;
+    this.googleClient = new OAuth2Client(this.googleClientId ?? undefined);
+  }
 
   async register(dto: RegisterDto): Promise<AuthResponse> {
     const email = dto.email.trim().toLowerCase();
@@ -270,5 +278,93 @@ export class AuthService {
       .where('userId = :userId', { userId: record.user.id })
       .andWhere('usedAt IS NULL')
       .execute();
+  }
+
+  /**
+   * Google ID-token sign-in.
+   *
+   * Flow (spec Section 6, Path B):
+   *   1. Frontend obtains an ID token from Google's Sign-In SDK.
+   *   2. That token is sent here as `idToken`.
+   *   3. We verify it against Google's public keys, checking the audience
+   *      matches our client ID (prevents token-substitution attacks).
+   *   4. Extract email + `sub` (Google's stable user id).
+   *   5. Find by googleId → by email → create new.
+   *   6. Issue our own JWT pair — identical to password login from here.
+   */
+  async loginWithGoogle(dto: GoogleLoginDto): Promise<AuthResponse> {
+    if (!this.googleClientId) {
+      // No client ID configured — this endpoint is not usable.
+      throw new UnauthorizedException(
+        'Google sign-in is not configured on this server',
+      );
+    }
+
+    // ── STEP 1: verify signature, issuer, and audience ──
+    let payload;
+    try {
+      const ticket = await this.googleClient.verifyIdToken({
+        idToken: dto.idToken,
+        audience: this.googleClientId,
+      });
+      payload = ticket.getPayload();
+    } catch (err) {
+      // verifyIdToken throws for: bad signature, wrong audience, expired,
+      // malformed. All produce the same 401.
+      throw new UnauthorizedException('Invalid Google token');
+    }
+
+    if (!payload || !payload.email || !payload.sub) {
+      throw new UnauthorizedException(
+        'Google token did not contain an email address',
+      );
+    }
+    if (!payload.email_verified) {
+      // Google lets you create unverified accounts in some contexts.
+      // Require verification — otherwise anyone could claim any email.
+      throw new UnauthorizedException('Google email is not verified');
+    }
+
+    const email = payload.email.trim().toLowerCase();
+    const googleId = payload.sub;
+
+    // ── STEP 2: find by googleId ──
+    let user = await this.usersService.findByGoogleId(googleId);
+
+    // ── STEP 3: find by email, then link ──
+    // A user who registered with a password may later choose Google sign-in
+    // with the same address. Spec: "Find existing user by googleId, else by
+    // email, else create new" — so we link rather than reject.
+    if (!user) {
+      const byEmail = await this.usersService.findByEmail(email);
+      if (byEmail) {
+        if (!byEmail.isActive) {
+          throw new UnauthorizedException('Account is banned');
+        }
+        await this.usersService.update(byEmail.id, { googleId });
+        user = await this.usersService.findByIdOrFail(byEmail.id);
+      }
+    }
+
+    // ── STEP 4: create if still missing ──
+    if (!user) {
+      user = await this.usersService.create({
+        name: payload.name?.trim() || email.split('@')[0],
+        email,
+        passwordHash: null, // Google-only account
+        googleId,
+        role: UserRole.CUSTOMER,
+        balance: '0',
+        isActive: true,
+      });
+    }
+
+    // ── STEP 5: banned check (for existing accounts) ──
+    if (!user.isActive) {
+      throw new UnauthorizedException('Account is banned');
+    }
+
+    // ── STEP 6: issue our own JWT pair — same shape as password login ──
+    return this.issueTokens(user);
   }
 }

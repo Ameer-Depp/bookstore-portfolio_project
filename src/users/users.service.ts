@@ -86,4 +86,8 @@ export class UsersService {
 
     return this.findByIdOrFail(userId);
   }
+
+  findByGoogleId(googleId: string): Promise<User | null> {
+    return this.usersRepo.findOne({ where: { googleId } });
+  }
 }
