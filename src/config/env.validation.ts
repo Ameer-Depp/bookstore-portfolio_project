@@ -35,4 +35,5 @@ export const envValidationSchema = Joi.object({
   MAIL_FROM: Joi.string().allow('').optional(),
 
   FRONTEND_URL: Joi.string().allow('').optional(),
+  CORS_ORIGINS: Joi.string().allow('').optional(),
 });
