@@ -13,6 +13,7 @@ import { CategoriesModule } from './categories/categories.module';
 import { BooksModule } from './books/books.module';
 import { CartModule } from './cart/cart.module';
 import { CouponsModule } from './coupons/coupons.module';
+import { OrdersModule } from './orders/orders.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { CouponsModule } from './coupons/coupons.module';
     BooksModule,
     CartModule,
     CouponsModule,
+    OrdersModule,
   ],
   controllers: [AppController],
   providers: [AppService],
