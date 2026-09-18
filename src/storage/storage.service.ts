@@ -28,6 +28,7 @@ export class StorageService implements OnModuleInit {
   private readonly bucket: string;
   private readonly endpointBase: string; // S3 API endpoint — for signed URLs
   private readonly publicBaseUrl: string; // Public URL base — for cover URLs
+  private readonly hasPublicUrlOverride: boolean; // ← add this
 
   constructor(private readonly config: ConfigService) {
     const useSsl = this.config.get<boolean>('S3_USE_SSL') ?? false;
@@ -41,10 +42,11 @@ export class StorageService implements OnModuleInit {
     // for public cover URLs; otherwise fall back to the S3 endpoint
     // (MinIO's behavior).
     const publicUrlOverride = this.config.get<string>('S3_PUBLIC_URL');
-    this.publicBaseUrl =
-      publicUrlOverride && publicUrlOverride.length > 0
-        ? publicUrlOverride.replace(/\/$/, '') // strip trailing slash
-        : this.endpointBase;
+    this.hasPublicUrlOverride =
+      !!publicUrlOverride && publicUrlOverride.length > 0;
+    this.publicBaseUrl = this.hasPublicUrlOverride
+      ? publicUrlOverride!.replace(/\/$/, '')
+      : this.endpointBase;
 
     this.bucket = this.config.get<string>('S3_BUCKET')!;
 
@@ -121,14 +123,29 @@ export class StorageService implements OnModuleInit {
     return getSignedUrl(this.client, command, { expiresIn: expiresInSeconds });
   }
 
-  /** Build the direct public URL for a key. Only valid for covers/*. */
+  /**
+   * Public URL for a key.
+   *
+   * - If S3_PUBLIC_URL is set (R2), the subdomain is bucket-bound, so the
+   *   path is just <publicBaseUrl>/<key> — no bucket segment.
+   * - Otherwise (MinIO), we use the S3 API endpoint with the bucket in
+   *   the path: <endpoint>/<bucket>/<key>.
+   */
   publicUrl(key: string): string {
-    return `${this.publicBaseUrl}/${this.bucket}/${key}`;
+    if (this.hasPublicUrlOverride) {
+      return `${this.publicBaseUrl}/${key}`;
+    }
+    return `${this.endpointBase}/${this.bucket}/${key}`;
   }
 
   /** Inverse of publicUrl — extract the S3 key from a stored cover URL. */
   keyFromUrl(url: string): string | null {
-    const prefix = `${this.publicBaseUrl}/${this.bucket}/`;
+    if (this.hasPublicUrlOverride) {
+      const prefix = `${this.publicBaseUrl}/`;
+      if (!url.startsWith(prefix)) return null;
+      return url.slice(prefix.length);
+    }
+    const prefix = `${this.endpointBase}/${this.bucket}/`;
     if (!url.startsWith(prefix)) return null;
     return url.slice(prefix.length);
   }
