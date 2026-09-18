@@ -1,0 +1,26 @@
+# Dependencies — will be reinstalled inside the image
+node_modules
+npm-debug.log*
+
+# Build output — will be regenerated
+dist
+coverage
+
+# Local env / secrets — NEVER bake into images
+.env
+.env.*
+!.env.example
+
+# Dev tooling and caches
+.git
+.gitignore
+.github
+.vscode
+.idea
+*.log
+
+# Tests and docs — not needed in the production image
+test
+*.spec.ts
+*.e2e-spec.ts
+README.md

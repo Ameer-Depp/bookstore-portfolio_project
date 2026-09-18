@@ -27,7 +27,8 @@ export class StorageService implements OnModuleInit {
   private readonly logger = new Logger(StorageService.name);
   private readonly client: S3Client;
   private readonly bucket: string;
-  private readonly endpointBase: string; // e.g. http://localhost:9000
+  private readonly endpointBase: string; // S3 API endpoint (for client)
+  private readonly publicBaseUrl: string; // public URL base (for cover URLs)
 
   constructor(private readonly config: ConfigService) {
     const useSsl = this.config.get<boolean>('S3_USE_SSL') ?? false;
@@ -35,14 +36,22 @@ export class StorageService implements OnModuleInit {
     const host = this.config.get<string>('S3_ENDPOINT');
     const port = this.config.get<number>('S3_PORT');
     this.endpointBase = `${protocol}://${host}:${port}`;
+
+    // R2 (and some S3 providers) serve public files from a different
+    // domain than the S3 API endpoint. If S3_PUBLIC_URL is set, use it
+    // for public URLs; otherwise fall back to the S3 endpoint (MinIO
+    // works this way because the same host serves both API and files).
+    const publicUrlOverride = this.config.get<string>('S3_PUBLIC_URL');
+    this.publicBaseUrl =
+      publicUrlOverride && publicUrlOverride.length > 0
+        ? publicUrlOverride.replace(/\/$/, '') // strip trailing slash
+        : this.endpointBase;
+
     this.bucket = this.config.get<string>('S3_BUCKET')!;
 
     this.client = new S3Client({
-      // MinIO ignores region but the SDK requires a value.
       region: 'us-east-1',
       endpoint: this.endpointBase,
-      // MinIO uses path-style (bucket in the path, not subdomain).
-      // Works fine against AWS too, so we use it everywhere.
       forcePathStyle: true,
       credentials: {
         accessKeyId: this.config.get<string>('S3_ACCESS_KEY')!,
@@ -92,12 +101,12 @@ export class StorageService implements OnModuleInit {
 
   /** Build the direct public URL for a key. Only valid for covers/*. */
   publicUrl(key: string): string {
-    return `${this.endpointBase}/${this.bucket}/${key}`;
+    return `${this.publicBaseUrl}/${this.bucket}/${key}`;
   }
 
   /** Inverse of publicUrl — extract the S3 key from a stored cover URL. */
   keyFromUrl(url: string): string | null {
-    const prefix = `${this.endpointBase}/${this.bucket}/`;
+    const prefix = `${this.publicBaseUrl}/${this.bucket}/`;
     if (!url.startsWith(prefix)) return null;
     return url.slice(prefix.length);
   }

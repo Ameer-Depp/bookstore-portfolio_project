@@ -23,6 +23,7 @@ export const envValidationSchema = Joi.object({
   S3_SECRET_KEY: Joi.string().required(),
   S3_BUCKET: Joi.string().required(),
   S3_USE_SSL: Joi.boolean().truthy('true').falsy('false').default(false),
+  S3_PUBLIC_URL: Joi.string().allow('').optional(),
 
   // Optional now; required when their modules land (later sections).
   GOOGLE_CLIENT_ID: Joi.string().allow('').optional(),
@@ -36,4 +37,5 @@ export const envValidationSchema = Joi.object({
 
   FRONTEND_URL: Joi.string().allow('').optional(),
   CORS_ORIGINS: Joi.string().allow('').optional(),
+  DB_SSL: Joi.string().valid('true', 'false', '').optional(),
 });
