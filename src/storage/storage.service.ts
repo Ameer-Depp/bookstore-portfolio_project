@@ -3,7 +3,6 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
-  PutBucketPolicyCommand,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
@@ -27,8 +26,8 @@ export class StorageService implements OnModuleInit {
   private readonly logger = new Logger(StorageService.name);
   private readonly client: S3Client;
   private readonly bucket: string;
-  private readonly endpointBase: string; // S3 API endpoint (for client)
-  private readonly publicBaseUrl: string; // public URL base (for cover URLs)
+  private readonly endpointBase: string; // S3 API endpoint — for signed URLs
+  private readonly publicBaseUrl: string; // Public URL base — for cover URLs
 
   constructor(private readonly config: ConfigService) {
     const useSsl = this.config.get<boolean>('S3_USE_SSL') ?? false;
@@ -39,8 +38,8 @@ export class StorageService implements OnModuleInit {
 
     // R2 (and some S3 providers) serve public files from a different
     // domain than the S3 API endpoint. If S3_PUBLIC_URL is set, use it
-    // for public URLs; otherwise fall back to the S3 endpoint (MinIO
-    // works this way because the same host serves both API and files).
+    // for public cover URLs; otherwise fall back to the S3 endpoint
+    // (MinIO's behavior).
     const publicUrlOverride = this.config.get<string>('S3_PUBLIC_URL');
     this.publicBaseUrl =
       publicUrlOverride && publicUrlOverride.length > 0
@@ -58,10 +57,17 @@ export class StorageService implements OnModuleInit {
         secretAccessKey: this.config.get<string>('S3_SECRET_KEY')!,
       },
     });
+
+    this.logger.log(`S3 endpoint: ${this.endpointBase}`);
+    this.logger.log(`Public URL base: ${this.publicBaseUrl}`);
   }
 
   async onModuleInit(): Promise<void> {
     await this.ensureBucketExists();
+    // PutBucketPolicy is not supported on Cloudflare R2 — the covers are
+    // made publicly readable via the R2.dev subdomain + bucket settings
+    // in the Cloudflare dashboard, not via an S3 policy. This call is
+    // kept for MinIO compatibility (where it does work).
     await this.ensureCoversArePublicReadable();
   }
 
@@ -99,22 +105,10 @@ export class StorageService implements OnModuleInit {
     );
   }
 
-  /** Build the direct public URL for a key. Only valid for covers/*. */
-  publicUrl(key: string): string {
-    return `${this.publicBaseUrl}/${this.bucket}/${key}`;
-  }
-
-  /** Inverse of publicUrl — extract the S3 key from a stored cover URL. */
-  keyFromUrl(url: string): string | null {
-    const prefix = `${this.publicBaseUrl}/${this.bucket}/`;
-    if (!url.startsWith(prefix)) return null;
-    return url.slice(prefix.length);
-  }
-
   /**
    * Generates a short-lived presigned GET URL for a private object.
-   * Anyone holding the URL can fetch the object until it expires —
-   * that's why the TTL is short (spec: "a few minutes is sufficient").
+   * Anyone holding the URL can fetch the object until it expires.
+   * Uses the S3 API endpoint (endpointBase), not the public URL.
    */
   async getSignedDownloadUrl(
     key: string,
@@ -125,6 +119,18 @@ export class StorageService implements OnModuleInit {
       Key: key,
     });
     return getSignedUrl(this.client, command, { expiresIn: expiresInSeconds });
+  }
+
+  /** Build the direct public URL for a key. Only valid for covers/*. */
+  publicUrl(key: string): string {
+    return `${this.publicBaseUrl}/${this.bucket}/${key}`;
+  }
+
+  /** Inverse of publicUrl — extract the S3 key from a stored cover URL. */
+  keyFromUrl(url: string): string | null {
+    const prefix = `${this.publicBaseUrl}/${this.bucket}/`;
+    if (!url.startsWith(prefix)) return null;
+    return url.slice(prefix.length);
   }
 
   // ---------- Bootstrap helpers ----------
@@ -140,27 +146,28 @@ export class StorageService implements OnModuleInit {
   }
 
   /**
-   * Grants anonymous read on covers/* only. PDFs remain private.
-   * Wrapped in try/catch: some MinIO configurations reject anonymous
-   * policies, and we don't want the app to fail to boot over it.
-   * If this fails, covers will still upload but the public URL won't
-   * resolve — Section 6C's signed-URL test covers the PDF side anyway.
+   * MinIO honors PutBucketPolicy; Cloudflare R2 does not implement it
+   * (that's why you see `PutBucketPolicy not implemented` on Render's
+   * logs). R2 uses the r2.dev subdomain + bucket public-access setting
+   * instead, configured in the Cloudflare dashboard.
+   *
+   * Wrapped in try/catch so this never fails app startup.
    */
   private async ensureCoversArePublicReadable(): Promise<void> {
-    const policy = {
-      Version: '2012-10-17',
-      Statement: [
-        {
-          Sid: 'PublicReadCovers',
-          Effect: 'Allow',
-          Principal: { AWS: ['*'] },
-          Action: ['s3:GetObject'],
-          Resource: [`arn:aws:s3:::${this.bucket}/covers/*`],
-        },
-      ],
-    };
-
     try {
+      const { PutBucketPolicyCommand } = await import('@aws-sdk/client-s3');
+      const policy = {
+        Version: '2012-10-17',
+        Statement: [
+          {
+            Sid: 'PublicReadCovers',
+            Effect: 'Allow',
+            Principal: { AWS: ['*'] },
+            Action: ['s3:GetObject'],
+            Resource: [`arn:aws:s3:::${this.bucket}/covers/*`],
+          },
+        ],
+      };
       await this.client.send(
         new PutBucketPolicyCommand({
           Bucket: this.bucket,
@@ -170,7 +177,9 @@ export class StorageService implements OnModuleInit {
       this.logger.log('Bucket policy set: covers/* is publicly readable');
     } catch (err) {
       this.logger.warn(
-        `Could not set bucket policy (covers may not be publicly readable): ${(err as Error).message}`,
+        `Could not set bucket policy (covers served via S3_PUBLIC_URL instead): ${
+          (err as Error).message
+        }`,
       );
     }
   }
