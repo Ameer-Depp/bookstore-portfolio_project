@@ -19,7 +19,6 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { User, UserRole } from '../entities/user.entity';
-import { Throttle } from '@nestjs/throttler';
 
 @Controller('coupons')
 export class CouponsController {
@@ -48,7 +47,6 @@ export class CouponsController {
   // ---------- Customer ----------
 
   @Post('redeem')
-  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   redeem(

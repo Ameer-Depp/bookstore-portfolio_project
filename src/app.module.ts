@@ -17,8 +17,6 @@ import { OrdersModule } from './orders/orders.module';
 import { LibraryModule } from './library/library.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { MailModule } from './mail/mail.module';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
-import { APP_GUARD } from '@nestjs/core';
 
 @Module({
   imports: [
@@ -32,15 +30,7 @@ import { APP_GUARD } from '@nestjs/core';
       inject: [ConfigService],
       useFactory: buildTypeOrmOptions,
     }),
-    ThrottlerModule.forRoot([
-      {
-        // Global default: 100 requests per minute per IP.
-        // Per-route overrides are applied with @Throttle() as shown below.
-        name: 'default',
-        ttl: 60_000,
-        limit: 100,
-      },
-    ]),
+
     SecurityModule,
     StorageModule,
     UsersModule,
@@ -55,12 +45,6 @@ import { APP_GUARD } from '@nestjs/core';
     MailModule,
   ],
   controllers: [AppController],
-  providers: [
-    AppService,
-    {
-      provide: APP_GUARD,
-      useClass: ThrottlerGuard,
-    },
-  ],
+  providers: [AppService],
 })
 export class AppModule {}

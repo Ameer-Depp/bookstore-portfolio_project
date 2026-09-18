@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { applyRateLimits } from './common/rate-limit.middleware';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
@@ -35,6 +36,7 @@ async function bootstrap() {
       transform: true,
     }),
   );
+  applyRateLimits(app);
 
   // ── Swagger ──
   // Available at /api/v1/docs in every environment. If you want it
