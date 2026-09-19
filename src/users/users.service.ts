@@ -1,8 +1,14 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../entities/user.entity';
+import * as bcrypt from 'bcrypt';
 
 export interface PaginatedUsers {
   data: User[];
@@ -89,5 +95,32 @@ export class UsersService {
 
   findByGoogleId(googleId: string): Promise<User | null> {
     return this.usersRepo.findOne({ where: { googleId } });
+  }
+
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<void> {
+    const user = await this.findByIdOrFail(userId);
+
+    if (!user.passwordHash) {
+      throw new BadRequestException(
+        'This account uses Google sign-in and has no password to change.',
+      );
+    }
+
+    const ok = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!ok) {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    // Also null out the refresh chain so any other session must re-login.
+    // The current session's access token stays valid until it expires.
+    await this.usersRepo.update(userId, {
+      passwordHash,
+      refreshTokenHash: null,
+    });
   }
 }

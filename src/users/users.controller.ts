@@ -21,6 +21,7 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 import { ListUsersQueryDto } from './dto/list-users-query.dto';
 import { TopUpDto } from './dto/top-up.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
 interface PublicUser {
   id: string;
@@ -67,6 +68,20 @@ export class UsersController {
     }
     const fresh = await this.usersService.findByIdOrFail(user.id);
     return toPublic(fresh);
+  }
+
+  @Patch('me/password')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async changePassword(
+    @CurrentUser() user: User,
+    @Body() dto: ChangePasswordDto,
+  ): Promise<void> {
+    await this.usersService.changePassword(
+      user.id,
+      dto.currentPassword,
+      dto.newPassword,
+    );
   }
 
   // ---------- Admin routes ----------
